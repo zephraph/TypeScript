@@ -4666,6 +4666,119 @@ namespace ts {
                 return false;
         }
     }
+
+    interface Statistic {
+        name: string;
+        value: string;
+    }
+
+    function countLines(program: Program): number {
+        let count = 0;
+        forEach(program.getSourceFiles(), file => {
+            count += getLineStarts(file).length;
+        });
+        return count;
+    }
+
+    function padLeft(s: string, length: number) {
+        while (s.length < length) {
+            s = " " + s;
+        }
+        return s;
+    }
+
+    function padRight(s: string, length: number) {
+        while (s.length < length) {
+            s = s + " ";
+        }
+
+        return s;
+    }
+
+    export interface StatisticsHost {
+        getMemoryUsage?(): number;
+        write(s: string): void;
+        newLine: string;
+    }
+
+    export function enableStatistics(compilerOptions: CompilerOptions) {
+        if (compilerOptions.diagnostics || compilerOptions.extendedDiagnostics) {
+            performance.enable();
+        }
+    }
+
+    export function reportStatistics(host: StatisticsHost, program: Program) {
+        let statistics: Statistic[];
+        const compilerOptions = program.getCompilerOptions();
+        if (compilerOptions.diagnostics || compilerOptions.extendedDiagnostics) {
+            statistics = [];
+            const memoryUsed = host.getMemoryUsage ? host.getMemoryUsage() : -1;
+            reportCountStatistic("Files", program.getSourceFiles().length);
+            reportCountStatistic("Lines", countLines(program));
+            reportCountStatistic("Nodes", program.getNodeCount());
+            reportCountStatistic("Identifiers", program.getIdentifierCount());
+            reportCountStatistic("Symbols", program.getSymbolCount());
+            reportCountStatistic("Types", program.getTypeCount());
+
+            if (memoryUsed >= 0) {
+                reportStatisticalValue("Memory used", Math.round(memoryUsed / 1000) + "K");
+            }
+
+            const programTime = performance.getDuration("Program");
+            const bindTime = performance.getDuration("Bind");
+            const checkTime = performance.getDuration("Check");
+            const emitTime = performance.getDuration("Emit");
+            if (compilerOptions.extendedDiagnostics) {
+                performance.forEachMeasure((name, duration) => reportTimeStatistic(`${name} time`, duration));
+            }
+            else {
+                // Individual component times.
+                // Note: To match the behavior of previous versions of the compiler, the reported parse time includes
+                // I/O read time and processing time for triple-slash references and module imports, and the reported
+                // emit time includes I/O write time. We preserve this behavior so we can accurately compare times.
+                reportTimeStatistic("I/O read", performance.getDuration("I/O Read"));
+                reportTimeStatistic("I/O write", performance.getDuration("I/O Write"));
+                reportTimeStatistic("Parse time", programTime);
+                reportTimeStatistic("Bind time", bindTime);
+                reportTimeStatistic("Check time", checkTime);
+                reportTimeStatistic("Emit time", emitTime);
+            }
+            reportTimeStatistic("Total time", programTime + bindTime + checkTime + emitTime);
+            reportStatistics();
+
+            performance.disable();
+        }
+
+        function reportStatistics() {
+            let nameSize = 0;
+            let valueSize = 0;
+            for (const { name, value } of statistics) {
+                if (name.length > nameSize) {
+                    nameSize = name.length;
+                }
+
+                if (value.length > valueSize) {
+                    valueSize = value.length;
+                }
+            }
+
+            for (const { name, value } of statistics) {
+                host.write(padRight(name + ":", nameSize + 2) + padLeft(value.toString(), valueSize) + host.newLine);
+            }
+        }
+
+        function reportStatisticalValue(name: string, value: string) {
+            statistics.push({ name, value });
+        }
+
+        function reportCountStatistic(name: string, count: number) {
+            reportStatisticalValue(name, "" + count);
+        }
+
+        function reportTimeStatistic(name: string, time: number) {
+            reportStatisticalValue(name, (time / 1000).toFixed(2) + "s");
+        }
+    }
 }
 
 namespace ts {

@@ -1,17 +1,4 @@
 namespace ts {
-    interface Statistic {
-        name: string;
-        value: string;
-    }
-
-    function countLines(program: Program): number {
-        let count = 0;
-        forEach(program.getSourceFiles(), file => {
-            count += getLineStarts(file).length;
-        });
-        return count;
-    }
-
     let reportDiagnostic = createDiagnosticReporter(sys);
     function updateReportDiagnostic(options: CompilerOptions | BuildOptions) {
         if (shouldBePretty(options)) {
@@ -28,21 +15,6 @@ namespace ts {
             return defaultIsPretty();
         }
         return options.pretty;
-    }
-
-    function padLeft(s: string, length: number) {
-        while (s.length < length) {
-            s = " " + s;
-        }
-        return s;
-    }
-
-    function padRight(s: string, length: number) {
-        while (s.length < length) {
-            s = s + " ";
-        }
-
-        return s;
     }
 
     function getOptionsForHelp(commandLine: ParsedCommandLine) {
@@ -215,7 +187,7 @@ namespace ts {
             createSolutionBuilderWithWatchHost(sys, /*createProgram*/ undefined, reportDiagnostic, createBuilderStatusReporter(sys, shouldBePretty(buildOptions)), createWatchStatusReporter(buildOptions)) :
             createSolutionBuilderHost(sys, /*createProgram*/ undefined, reportDiagnostic, createBuilderStatusReporter(sys, shouldBePretty(buildOptions)), createReportErrorSummary(buildOptions));
         updateCreateProgram(buildHost);
-        buildHost.afterProgramEmitAndDiagnostics = (program: BuilderProgram) => reportStatistics(program.getProgram());
+        buildHost.afterProgramEmitAndDiagnostics = (program: BuilderProgram) => reportStatistics(sys, program.getProgram());
 
         const builder = createSolutionBuilder(buildHost, projects, buildOptions);
         if (buildOptions.clean) {
@@ -257,7 +229,7 @@ namespace ts {
             s => sys.write(s + sys.newLine),
             createReportErrorSummary(options)
         );
-        reportStatistics(program);
+        reportStatistics(sys, program);
         return sys.exit(exitStatus);
     }
 
@@ -271,7 +243,7 @@ namespace ts {
             projectReferences,
             reportDiagnostic,
             reportErrorSummary: createReportErrorSummary(options),
-            afterProgramEmitAndDiagnostics: builderProgram => reportStatistics(builderProgram.getProgram())
+            afterProgramEmitAndDiagnostics: builderProgram => reportStatistics(sys, builderProgram.getProgram())
         }));
     }
 
@@ -291,7 +263,7 @@ namespace ts {
         const emitFilesUsingBuilder = watchCompilerHost.afterProgramCreate!; // TODO: GH#18217
         watchCompilerHost.afterProgramCreate = builderProgram => {
             emitFilesUsingBuilder(builderProgram);
-            reportStatistics(builderProgram.getProgram());
+            reportStatistics(sys, builderProgram.getProgram());
         };
     }
 
@@ -310,85 +282,6 @@ namespace ts {
         const watchCompilerHost = createWatchCompilerHostOfFilesAndCompilerOptions(rootFiles, options, sys, /*createProgram*/ undefined, reportDiagnostic, createWatchStatusReporter(options));
         updateWatchCompilationHost(watchCompilerHost);
         createWatchProgram(watchCompilerHost);
-    }
-
-    function enableStatistics(compilerOptions: CompilerOptions) {
-        if (compilerOptions.diagnostics || compilerOptions.extendedDiagnostics) {
-            performance.enable();
-        }
-    }
-
-    function reportStatistics(program: Program) {
-        let statistics: Statistic[];
-        const compilerOptions = program.getCompilerOptions();
-        if (compilerOptions.diagnostics || compilerOptions.extendedDiagnostics) {
-            statistics = [];
-            const memoryUsed = sys.getMemoryUsage ? sys.getMemoryUsage() : -1;
-            reportCountStatistic("Files", program.getSourceFiles().length);
-            reportCountStatistic("Lines", countLines(program));
-            reportCountStatistic("Nodes", program.getNodeCount());
-            reportCountStatistic("Identifiers", program.getIdentifierCount());
-            reportCountStatistic("Symbols", program.getSymbolCount());
-            reportCountStatistic("Types", program.getTypeCount());
-
-            if (memoryUsed >= 0) {
-                reportStatisticalValue("Memory used", Math.round(memoryUsed / 1000) + "K");
-            }
-
-            const programTime = performance.getDuration("Program");
-            const bindTime = performance.getDuration("Bind");
-            const checkTime = performance.getDuration("Check");
-            const emitTime = performance.getDuration("Emit");
-            if (compilerOptions.extendedDiagnostics) {
-                performance.forEachMeasure((name, duration) => reportTimeStatistic(`${name} time`, duration));
-            }
-            else {
-                // Individual component times.
-                // Note: To match the behavior of previous versions of the compiler, the reported parse time includes
-                // I/O read time and processing time for triple-slash references and module imports, and the reported
-                // emit time includes I/O write time. We preserve this behavior so we can accurately compare times.
-                reportTimeStatistic("I/O read", performance.getDuration("I/O Read"));
-                reportTimeStatistic("I/O write", performance.getDuration("I/O Write"));
-                reportTimeStatistic("Parse time", programTime);
-                reportTimeStatistic("Bind time", bindTime);
-                reportTimeStatistic("Check time", checkTime);
-                reportTimeStatistic("Emit time", emitTime);
-            }
-            reportTimeStatistic("Total time", programTime + bindTime + checkTime + emitTime);
-            reportStatistics();
-
-            performance.disable();
-        }
-
-        function reportStatistics() {
-            let nameSize = 0;
-            let valueSize = 0;
-            for (const { name, value } of statistics) {
-                if (name.length > nameSize) {
-                    nameSize = name.length;
-                }
-
-                if (value.length > valueSize) {
-                    valueSize = value.length;
-                }
-            }
-
-            for (const { name, value } of statistics) {
-                sys.write(padRight(name + ":", nameSize + 2) + padLeft(value.toString(), valueSize) + sys.newLine);
-            }
-        }
-
-        function reportStatisticalValue(name: string, value: string) {
-            statistics.push({ name, value });
-        }
-
-        function reportCountStatistic(name: string, count: number) {
-            reportStatisticalValue(name, "" + count);
-        }
-
-        function reportTimeStatistic(name: string, time: number) {
-            reportStatisticalValue(name, (time / 1000).toFixed(2) + "s");
-        }
     }
 
     function writeConfigFile(options: CompilerOptions, fileNames: string[]) {

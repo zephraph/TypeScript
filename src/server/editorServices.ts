@@ -575,11 +575,11 @@ namespace ts.server {
                 extraFileExtensions: []
             };
 
-            this.documentRegistry = createDocumentRegistryInternal(this.host.useCaseSensitiveFileNames, this.currentDirectory, this);
             const watchLogLevel = this.logger.hasLevel(LogLevel.verbose) ? WatchLogLevel.Verbose :
                 this.logger.loggingEnabled() ? WatchLogLevel.TriggerOnly : WatchLogLevel.None;
             const log: (s: string) => void = watchLogLevel !== WatchLogLevel.None ? (s => this.logger.info(s)) : noop;
             this.watchFactory = getWatchFactory(watchLogLevel, log, getDetailWatchInfo);
+            this.documentRegistry = createDocumentRegistryInternal(this.host.useCaseSensitiveFileNames, this.currentDirectory, this, log);
         }
 
         toPath(fileName: string) {
@@ -1224,6 +1224,7 @@ namespace ts.server {
         }
 
         private deleteScriptInfo(info: ScriptInfo) {
+            this.logger.info(`Deleting script info: ${info.path}`);
             this.filenameToScriptInfo.delete(info.path);
             this.filenameToScriptInfoVersion.set(info.path, info.getVersion());
             const realpath = info.getRealpathIfDifferent();
@@ -2180,6 +2181,7 @@ namespace ts.server {
                     return;
                 }
                 info = new ScriptInfo(this.host, fileName, scriptKind!, !!hasMixedContent, path, this.filenameToScriptInfoVersion.get(path)); // TODO: GH#18217
+                this.logger.info(`Created script info: ${info.path}`);
                 this.filenameToScriptInfo.set(info.path, info);
                 this.filenameToScriptInfoVersion.delete(info.path);
                 if (!openedByClient) {

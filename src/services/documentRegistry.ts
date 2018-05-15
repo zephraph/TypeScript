@@ -110,12 +110,12 @@ namespace ts {
         languageServiceRefCount: number;
     }
 
-    export function createDocumentRegistry(useCaseSensitiveFileNames?: boolean, currentDirectory?: string): DocumentRegistry {
-        return createDocumentRegistryInternal(useCaseSensitiveFileNames, currentDirectory);
+    export function createDocumentRegistry(useCaseSensitiveFileNames?: boolean, currentDirectory?: string, log?: (s: string) => void): DocumentRegistry {
+        return createDocumentRegistryInternal(useCaseSensitiveFileNames, currentDirectory, /*externalCache*/ undefined, log);
     }
 
     /*@internal*/
-    export function createDocumentRegistryInternal(useCaseSensitiveFileNames?: boolean, currentDirectory = "", externalCache?: ExternalDocumentCache): DocumentRegistry {
+    export function createDocumentRegistryInternal(useCaseSensitiveFileNames?: boolean, currentDirectory = "", externalCache?: ExternalDocumentCache, log: (s: string) => void = noop): DocumentRegistry {
         // Maps from compiler setting target (ES3, ES5, etc.) to all the cached documents we have
         // for those settings.
         const buckets = createMap<Map<DocumentRegistryEntry>>();
@@ -169,7 +169,7 @@ namespace ts {
             version: string,
             acquiring: boolean,
             scriptKind?: ScriptKind): SourceFile {
-
+            const start = timestamp();
             const bucket = getOrUpdate<Map<DocumentRegistryEntry>>(buckets, key, createMap);
             let entry = bucket.get(path);
             const scriptTarget = scriptKind === ScriptKind.JSON ? ScriptTarget.JSON : compilationSettings.target || ScriptTarget.ES5;
@@ -187,6 +187,7 @@ namespace ts {
 
             if (!entry) {
                 // Have never seen this file with these settings.  Create a new source file for it.
+                log(`Creating document ${path}`);
                 const sourceFile = createLanguageServiceSourceFile(fileName, scriptSnapshot, scriptTarget, version, /*setNodeParents*/ false, scriptKind);
                 if (externalCache) {
                     externalCache.setDocument(key, path, sourceFile);
@@ -202,6 +203,7 @@ namespace ts {
                 // the script snapshot.  If so, update it appropriately.  Otherwise, we can just
                 // return it as is.
                 if (entry.sourceFile.version !== version) {
+                    log(`Creating new version of document ${path}`);
                     entry.sourceFile = updateLanguageServiceSourceFile(entry.sourceFile, scriptSnapshot, version,
                         scriptSnapshot.getChangeRange(entry.sourceFile.scriptSnapshot!)); // TODO: GH#18217
                     if (externalCache) {
@@ -217,9 +219,12 @@ namespace ts {
                 if (acquiring) {
                     entry.languageServiceRefCount++;
                 }
+                log(`${acquiring ? "acquiring" : "updating"} document ${path}`);
             }
             Debug.assert(entry.languageServiceRefCount !== 0);
 
+            const elapsed = timestamp() - start;
+            log(`${acquiring ? "acquiring" : "updating"} document ${path} elapsed: ${elapsed}ms`);
             return entry.sourceFile;
         }
 
@@ -233,9 +238,11 @@ namespace ts {
             const bucket = Debug.assertDefined(buckets.get(key));
             const entry = bucket.get(path)!;
             entry.languageServiceRefCount--;
+            log(`Releasing document: ${path}`);
 
             Debug.assert(entry.languageServiceRefCount >= 0);
             if (entry.languageServiceRefCount === 0) {
+                log(`Deleting document: ${path}`);
                 bucket.delete(path);
             }
         }

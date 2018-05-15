@@ -219,6 +219,8 @@ namespace ts.server {
         /*@internal*/
         public readonly getCanonicalFileName: GetCanonicalFileName;
 
+        private readonly statisticsHost: StatisticsHost;
+
         /*@internal*/
         constructor(
             /*@internal*/ readonly projectName: string,
@@ -245,6 +247,7 @@ namespace ts.server {
                 // If files are listed explicitly or allowJs is specified, allow all extensions
                 this.compilerOptions.allowNonTsExtensions = true;
             }
+            this.compilerOptions.extendedDiagnostics = true;
 
             this.languageServiceEnabled = !projectService.syntaxOnly;
 
@@ -259,6 +262,12 @@ namespace ts.server {
 
             if (host.realpath) {
                 this.realpath = path => host.realpath!(path);
+            }
+
+            this.statisticsHost = {
+                newLine: host.newLine,
+                getMemoryUsage: maybeBind(host, host.getMemoryUsage),
+                write: s => this.writeLog(s)
             }
 
             // Use the current directory as resolution root only if the project created using current directory string
@@ -898,6 +907,7 @@ namespace ts.server {
             const oldProgram = this.program;
             Debug.assert(!this.isClosed(), "Called update graph worker of closed project");
             this.writeLog(`Starting updateGraphWorker: Project: ${this.getProjectName()}`);
+            enableStatistics(this.getCompilationSettings());
             const start = timestamp();
             this.hasInvalidatedResolution = this.resolutionCache.createHasInvalidatedResolution();
             this.resolutionCache.startCachingPerDirectoryResolution();
@@ -961,6 +971,7 @@ namespace ts.server {
             if (this.program !== oldProgram) {
                 this.print();
             }
+            reportStatistics(this.statisticsHost, this.program);
             return hasNewProgram;
         }
 
@@ -1047,6 +1058,7 @@ namespace ts.server {
                     this.lastCachedUnresolvedImportsList = undefined;
                     this.resolutionCache.clear();
                 }
+                this.compilerOptions.extendedDiagnostics = true;
                 this.markAsDirty();
             }
         }
