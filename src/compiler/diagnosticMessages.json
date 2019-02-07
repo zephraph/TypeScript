@@ -3940,6 +3940,14 @@
         "category": "Message",
         "code": 6358
     },
+    "Started build": {
+        "category": "Message",
+        "code": 9358
+    },
+    "Completed build in: '{0}'": {
+        "category": "Message",
+        "code": 9359
+    },
     "Updating output timestamps of project '{0}'...": {
         "category": "Message",
         "code": 6359

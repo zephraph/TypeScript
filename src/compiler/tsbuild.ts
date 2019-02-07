@@ -373,12 +373,15 @@ namespace ts {
         /*@internal*/ startWatching(): void;
     }
 
+    function nowString(d: Date) {
+        return `${d.getHours()}:${d.getMinutes()}:${d.getSeconds()}.${d.getMilliseconds()}`;
+    }
     /**
      * Create a function that reports watch status by writing to the system and handles the formating of the diagnostic
      */
     export function createBuilderStatusReporter(system: System, pretty?: boolean): DiagnosticReporter {
         return diagnostic => {
-            let output = pretty ? `[${formatColorAndReset(new Date().toLocaleTimeString(), ForegroundColorEscapeSequences.Grey)}] ` : `${new Date().toLocaleTimeString()} - `;
+            let output = pretty ? `[${formatColorAndReset(nowString(new Date()), ForegroundColorEscapeSequences.Grey)}] ` : `${nowString(new Date())} - `;
             output += `${flattenDiagnosticMessageText(diagnostic.messageText, system.newLine)}${system.newLine + system.newLine}`;
             system.write(output);
         };
@@ -1360,6 +1363,8 @@ namespace ts {
 
         function buildAllProjects(): ExitStatus {
             if (options.watch) { reportWatchStatus(Diagnostics.Starting_compilation_in_watch_mode); }
+            reportStatus(Diagnostics.Started_build);
+            const start = timestamp();
             // TODO:: In watch mode as well to use caches for incremental build once we can invalidate caches correctly and have right api
             // Override readFile for json files and output .d.ts to cache the text
             const savedReadFileWithCache = readFileWithCache;
@@ -1431,6 +1436,8 @@ namespace ts {
             host.writeFile = originalWriteFile;
             compilerHost.getSourceFile = savedGetSourceFile;
             readFileWithCache = savedReadFileWithCache;
+            const elapsed = timestamp() - start;
+            reportStatus(Diagnostics.Completed_build_in_Colon_0, `${elapsed}ms`);
             return anyFailed ? ExitStatus.DiagnosticsPresent_OutputsSkipped : ExitStatus.Success;
         }
 
