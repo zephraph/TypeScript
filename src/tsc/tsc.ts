@@ -142,13 +142,27 @@ namespace ts {
                 sys.write(JSON.stringify(convertToTSConfig(configParseResult, configFileName, sys), null, 4) + sys.newLine);
                 return sys.exit(ExitStatus.Success);
             }
+            let plugins: ReadonlyArray<CompilerPlugin> | undefined;
+            if (configParseResult.plugins) {
+                if (sys.require) {
+                    const result = getPlugins(sys as ModuleLoaderHost, getDirectoryPath(configFileName), configParseResult.plugins);
+                    plugins = result.plugins;
+                    if (some(result.diagnostics)) {
+                        // TODO(rbuckton): report diagnostics
+                    }
+                }
+                else {
+                    // TODO(rbuckton): report diagnostic
+                }
+            }
             updateReportDiagnostic(configParseResult.options);
             if (isWatchSet(configParseResult.options)) {
                 reportWatchModeWithoutSysSupport();
+                // TODO(rbuckton): watch mode support
                 createWatchOfConfigFile(configParseResult, commandLineOptions);
             }
             else {
-                performCompilation(configParseResult.fileNames, configParseResult.projectReferences, configParseResult.options, getConfigFileParsingDiagnostics(configParseResult));
+                performCompilation(configParseResult.fileNames, configParseResult.projectReferences, configParseResult.options, plugins, getConfigFileParsingDiagnostics(configParseResult));
             }
         }
         else {
@@ -163,7 +177,7 @@ namespace ts {
                 createWatchOfFilesAndCompilerOptions(commandLine.fileNames, commandLineOptions);
             }
             else {
-                performCompilation(commandLine.fileNames, /*references*/ undefined, commandLineOptions);
+                performCompilation(commandLine.fileNames, /*references*/ undefined, commandLineOptions, /*plugins*/ undefined);
             }
         }
     }
@@ -229,7 +243,7 @@ namespace ts {
             undefined;
     }
 
-    function performCompilation(rootNames: string[], projectReferences: ReadonlyArray<ProjectReference> | undefined, options: CompilerOptions, configFileParsingDiagnostics?: ReadonlyArray<Diagnostic>) {
+    function performCompilation(rootNames: string[], projectReferences: ReadonlyArray<ProjectReference> | undefined, options: CompilerOptions, plugins: ReadonlyArray<CompilerPlugin> | undefined, configFileParsingDiagnostics?: ReadonlyArray<Diagnostic>) {
         const host = createCompilerHost(options);
         const currentDirectory = host.getCurrentDirectory();
         const getCanonicalFileName = createGetCanonicalFileName(host.useCaseSensitiveFileNames());
@@ -241,7 +255,8 @@ namespace ts {
             options,
             projectReferences,
             host,
-            configFileParsingDiagnostics
+            configFileParsingDiagnostics,
+            plugins
         };
         const program = createProgram(programOptions);
         const exitStatus = emitFilesAndReportErrors(
@@ -251,6 +266,7 @@ namespace ts {
             createReportErrorSummary(options)
         );
         reportStatistics(program);
+        program.dispose();
         return sys.exit(exitStatus);
     }
 

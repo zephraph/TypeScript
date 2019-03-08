@@ -46,6 +46,7 @@
         "transformer.ts",
         "emitter.ts",
         "watchUtilities.ts",
+        "plugin.ts",
         "program.ts",
         "builderState.ts",
         "builder.ts",

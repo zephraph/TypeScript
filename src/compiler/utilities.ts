@@ -4596,6 +4596,16 @@ namespace ts {
     export function isAccessExpression(node: Node): node is AccessExpression {
         return node.kind === SyntaxKind.PropertyAccessExpression || node.kind === SyntaxKind.ElementAccessExpression;
     }
+
+    export function combineCustomTransformers(left: CustomTransformers | undefined, right: CustomTransformers | undefined): CustomTransformers | undefined {
+        if (!left) return right;
+        if (!right) return left;
+        return {
+            before: concatenate(left.before, right.before),
+            after: concatenate(left.after, right.after),
+            afterDeclarations: concatenate(left.afterDeclarations, right.afterDeclarations)
+        };
+    }
 }
 
 namespace ts {
