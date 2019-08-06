@@ -416,6 +416,11 @@ namespace ts {
 
         return createDirectoryWatcher;
 
+        function cacheToString() {
+            return `Cache:: ${JSON.stringify(arrayFrom(cache.keys()), /*replacer*/ undefined, " ")}
+Callbacks:: ${JSON.stringify(arrayFrom(callbackCache.entries(), ([key, value]) => [key, value.length]), /*replacer*/ undefined, " ")}`;
+        }
+
         /**
          * Create the directory watcher for the dirPath.
          */
@@ -430,17 +435,23 @@ namespace ts {
             else {
                 directoryWatcher = {
                     watcher: host.watchDirectory(dirName, fileName => {
+                        sysLog(`sysLog:: watchDirectory Callback ${dirName} ${fileName}`);
+                        const start = timestamp();
                         if (isIgnoredPath(fileName)) return;
 
                         // Call the actual callback
                         callbackCache.forEach((callbacks, rootDirName) => {
                             if (rootDirName === dirPath || (startsWith(dirPath, rootDirName) && dirPath[rootDirName.length] === directorySeparator)) {
+                                sysLog(`sysLog:: watchDirectory Calling callback ${rootDirName} with ${fileName}`);
                                 callbacks.forEach(callback => callback(fileName));
                             }
                         });
 
                         // Iterate through existing children and update the watches if needed
                         updateChildWatches(dirName, dirPath);
+                        const elapsed = timestamp() - start;
+                        sysLog(`sysLog:: ${cacheToString()}`);
+                        sysLog(`sysLog:: Finished:: watchDirectory Callback ${dirName} ${fileName}:: Elapsed:: ${elapsed}ms`);
                     }),
                     refCount: 1,
                     childWatches: emptyArray
@@ -483,19 +494,24 @@ namespace ts {
          * Watch the directories in the parentDir
          */
         function watchChildDirectories(parentDir: string, existingChildWatches: ChildWatches): ChildWatches {
+            sysLog(`sysLog:: Start:: watchChildDirectories ${parentDir}`);
+            const start = timestamp();
             let newChildWatches: ChildDirectoryWatcher[] | undefined;
+            const children = host.directoryExists(parentDir) ? mapDefined(host.getAccessibleSortedNonSymbolicChildDirectories(parentDir), child => {
+                const childFullName = getNormalizedAbsolutePath(child, parentDir);
+                return !isIgnoredPath(childFullName) ? childFullName : undefined;
+            }) : emptyArray;
+            sysLog(`sysLog:: Children:: ${JSON.stringify(children, /*replacer*/ undefined, " ")}`);
             enumerateInsertsAndDeletes<string, ChildDirectoryWatcher>(
-                host.directoryExists(parentDir) ? mapDefined(host.getAccessibleSortedNonSymbolicChildDirectories(parentDir), child => {
-                    const childFullName = getNormalizedAbsolutePath(child, parentDir);
-                    return !isIgnoredPath(childFullName) ? childFullName : undefined;
-                }) : emptyArray,
+                children,
                 existingChildWatches,
                 (child, childWatcher) => filePathComparer(child, childWatcher.dirName),
                 createAndAddChildDirectoryWatcher,
                 closeFileWatcher,
                 addChildDirectoryWatcher
             );
-
+            const elapsed = timestamp() - start;
+            sysLog(`sysLog:: Finished:: watchChildDirectories ${parentDir}:: Elapsed ${elapsed}ms`);
             return newChildWatches || emptyArray;
 
             /**
@@ -971,10 +987,14 @@ namespace ts {
             }
 
             function fsWatchFileWorker(fileName: string, callback: FileWatcherCallback, pollingInterval?: number): FileWatcher {
+                sysLog(`sysLog:: fs.watchFile${fileName}`);
                 _fs.watchFile(fileName, { persistent: true, interval: pollingInterval || 250 }, fileChanged);
                 let eventKind: FileWatcherEventKind;
                 return {
-                    close: () => _fs.unwatchFile(fileName, fileChanged)
+                    close: () => {
+                        sysLog(`sysLog:: fs.unwatchFile${fileName}`);
+                        _fs.unwatchFile(fileName, fileChanged);
+                    }
                 };
 
                 function fileChanged(curr: any, prev: any) {
@@ -1085,6 +1105,7 @@ namespace ts {
                         }
                     }
                     try {
+                        sysLog(`sysLog:: fs.watch ${fileOrDirectory}`);
                         const presentWatcher = _fs.watch(
                             fileOrDirectory,
                             options,
@@ -1094,7 +1115,12 @@ namespace ts {
                         );
                         // Watch the missing file or directory or error
                         presentWatcher.on("error", () => invokeCallbackAndUpdateWatcher(watchMissingFileSystemEntry));
-                        return presentWatcher;
+                        return {
+                            close: () => {
+                                sysLog(`sysLog:: close:: fs.watch ${fileOrDirectory}`);
+                                presentWatcher.close();
+                            }
+                        };
                     }
                     catch (e) {
                         // Catch the exception and use polling instead
