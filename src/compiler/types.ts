@@ -5054,6 +5054,7 @@ namespace ts {
         watchFile?: WatchFileKind;
         watchDirectory?: WatchDirectoryKind;
         fallbackPolling?: PollingWatchKind;
+        synchronousWatchDirectory?: boolean;
 
         [option: string]: CompilerOptionsValue | TsConfigSourceFile | undefined;
     }
