@@ -225,6 +225,10 @@ namespace ts {
             isCommandLineOnly: true,
             description: Diagnostics.Print_names_of_files_that_are_part_of_the_compilation_and_then_stop_processing
         },
+        {
+            name: "filter",
+            type: "string"
+        },
 
         // Basic
         {

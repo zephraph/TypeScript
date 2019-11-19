@@ -19,10 +19,19 @@ namespace ts {
             return diagnostic => system.write(formatDiagnostic(diagnostic, host));
         }
 
+        const filterIndex = process.argv.findIndex(v => v === "--filter")
         const diagnostics: Diagnostic[] = new Array(1);
         return diagnostic => {
+
             diagnostics[0] = diagnostic;
-            system.write(formatDiagnosticsWithColorAndContext(diagnostics, host) + host.getNewLine());
+            if (filterIndex >= 0)  {
+                const filter = process.argv[filterIndex + 1]
+                if (diagnostic.file?.fileName.includes(filter)) {
+                    system.write(formatDiagnosticsWithColorAndContext(diagnostics, host) + host.getNewLine());
+                }
+            } else {
+                system.write(formatDiagnosticsWithColorAndContext(diagnostics, host) + host.getNewLine());
+            }
             diagnostics[0] = undefined!; // TODO: GH#18217
         };
     }
@@ -98,7 +107,7 @@ namespace ts {
     }
 
     export function getErrorCountForSummary(diagnostics: readonly Diagnostic[]) {
-        return countWhere(diagnostics, diagnostic => diagnostic.category === DiagnosticCategory.Error);
+        return countWhere(diagnostics, diagnostic => (diagnostic.category === DiagnosticCategory.Error));
     }
 
     export function getWatchErrorSummaryDiagnosticMessage(errorCount: number) {
@@ -152,7 +161,7 @@ namespace ts {
         const isListFilesOnly = !!program.getCompilerOptions().listFilesOnly;
 
         // First get and report any syntactic errors.
-        const diagnostics = program.getConfigFileParsingDiagnostics().slice();
+        let diagnostics = program.getConfigFileParsingDiagnostics().slice()
         const configFileParsingDiagnosticsLength = diagnostics.length;
         addRange(diagnostics, program.getSyntacticDiagnostics(/*sourceFile*/ undefined, cancellationToken));
 
@@ -187,6 +196,11 @@ namespace ts {
             listFiles(program, writeFileName);
         }
 
+        const filterIndex = process.argv.findIndex(v => v === "--filter")
+        if (filterIndex >= 0)  {
+            const filter = process.argv[filterIndex + 1]
+            diagnostics = diagnostics.filter(diagnostic => diagnostic.file?.fileName.includes(filter));
+        }
         if (reportSummary) {
             reportSummary(getErrorCountForSummary(diagnostics));
         }
